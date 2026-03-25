@@ -79,24 +79,22 @@ export default function BingoPlayPage() {
         },
         (payload) => {
           const updatedPlayer = payload.new as Player
-          
+
           // Show notification for cell completion
           if (updatedPlayer.id !== playerId) {
-            const oldPlayer = players.find(p => p.id === updatedPlayer.id)
-            if (oldPlayer) {
-              const oldCells = oldPlayer.completed_cells || []
-              const newCells = updatedPlayer.completed_cells || []
-              const newCompletedIndex = newCells.find((c: number) => !oldCells.includes(c))
-              
-              if (newCompletedIndex !== undefined && updatedPlayer.bingo_card) {
-                const cellText = updatedPlayer.bingo_card[newCompletedIndex]
-                if (cellText) {
-                  addNotification(updatedPlayer.nickname, cellText)
-                }
+            const previousPlayer = payload.old as Player | null
+            const oldCells = previousPlayer?.completed_cells || []
+            const newCells = updatedPlayer.completed_cells || []
+            const newCompletedIndex = newCells.find((c: number) => !oldCells.includes(c))
+
+            if (newCompletedIndex !== undefined && updatedPlayer.bingo_card) {
+              const cellText = updatedPlayer.bingo_card[newCompletedIndex]
+              if (cellText) {
+                addNotification(updatedPlayer.nickname, cellText)
               }
             }
           }
-          
+
           fetchData()
         }
       )
@@ -146,11 +144,12 @@ export default function BingoPlayPage() {
 
   const handleCellTap = async (cellIndex: number) => {
     if (!currentPlayer) return
-    
-    const completedCells = currentPlayer.completed_cells || []
-    if (completedCells.includes(cellIndex)) return
 
-    const newCompletedCells = [...completedCells, cellIndex]
+    const completedCells = currentPlayer.completed_cells || []
+    const isCompleted = completedCells.includes(cellIndex)
+    const newCompletedCells = isCompleted
+      ? completedCells.filter(index => index !== cellIndex)
+      : [...completedCells, cellIndex]
     try {
       const supabase = createClient()
 
@@ -170,8 +169,8 @@ export default function BingoPlayPage() {
         completed_cells: newCompletedCells,
       } : null)
 
-      // Add self notification
-      if (currentPlayer.bingo_card) {
+      // Add self notification only when marking a cell
+      if (!isCompleted && currentPlayer.bingo_card) {
         addNotification(currentPlayer.nickname, currentPlayer.bingo_card[cellIndex])
       }
     } catch (err) {
@@ -181,6 +180,7 @@ export default function BingoPlayPage() {
 
   const completedCells = currentPlayer?.completed_cells || []
   const lineCount = countBingoLines(completedCells, gridSize)
+  const wordCount = completedCells.length
 
   const handleFinishGame = async () => {
     try {
@@ -209,7 +209,7 @@ export default function BingoPlayPage() {
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-accent" />
             <span className="text-sm text-accent font-medium">
-              揃った列 {lineCount}
+              揃った列 {lineCount} / マス {wordCount}
             </span>
           </div>
         </div>
@@ -229,7 +229,6 @@ export default function BingoPlayPage() {
                   <button
                     key={index}
                     onClick={() => handleCellTap(index)}
-                    disabled={isCompleted}
                     className={`
                       ${gridSize === 5 ? 'h-16 text-[10px]' : 'h-24 text-xs'}
                       p-2 rounded-lg font-medium
@@ -284,8 +283,12 @@ export default function BingoPlayPage() {
                 .map(player => ({
                   ...player,
                   lineCount: countBingoLines(player.completed_cells || [], gridSize),
+                  wordCount: (player.completed_cells || []).length,
                 }))
-                .sort((a, b) => b.lineCount - a.lineCount)
+                .sort((a, b) => {
+                  if (b.lineCount !== a.lineCount) return b.lineCount - a.lineCount
+                  return b.wordCount - a.wordCount
+                })
                 .map((player) => (
                   <div
                     key={player.id}
@@ -295,7 +298,7 @@ export default function BingoPlayPage() {
                       {player.nickname}
                     </span>
                     <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">
-                      {player.lineCount}列
+                      {player.lineCount}列 / {player.wordCount}マス
                     </span>
                   </div>
                 ))}
