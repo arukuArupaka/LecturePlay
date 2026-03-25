@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/client'
 import { getOrCreatePlayerId, clearRoomInfo, formatTime, formatSignedSeconds } from '@/lib/game-utils'
 import type { Player, SlideResult } from '@/lib/types'
-import { Trophy, Timer, Home, Crown, Sparkles, TrendingDown, Skull } from 'lucide-react'
+import { Trophy, Timer, Home, Crown, Sparkles, TrendingDown } from 'lucide-react'
 
 export default function TimerResultsPage() {
   const router = useRouter()
@@ -100,7 +100,7 @@ export default function TimerResultsPage() {
               <p className="text-sm text-muted-foreground">が1位</p>
               <div className="mt-4 flex items-center justify-center gap-4">
                 <div>
-                  <p className="text-xs text-muted-foreground">ペナルティ</p>
+                  <p className="text-xs text-muted-foreground">誤差ポイント</p>
                   <p className="text-lg font-mono font-bold text-accent">
                     {winner.total_penalty_points || 0}pt
                   </p>
@@ -122,28 +122,7 @@ export default function TimerResultsPage() {
                 <span className="font-medium">{loser.nickname}</span>
               </p>
               <p className="text-sm text-muted-foreground">
-                ペナルティ: {loser.total_penalty_points || 0}pt
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Penalty Section */}
-        {winner && loser && winner.penalty && winner.id !== loser.id && (
-          <Card className="bg-destructive/10 border-destructive/30">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Skull className="w-5 h-5 text-destructive" />
-                <span className="text-sm font-medium text-destructive">罰ゲーム発動</span>
-              </div>
-              <p className="text-foreground mb-3 text-lg font-medium">
-                {winner.penalty}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                <span className="text-accent font-medium">{winner.nickname}</span>
-                <span> が </span>
-                <span className="text-destructive font-medium">{loser.nickname}</span>
-                <span> に出す罰ゲーム</span>
+                誤差ポイント: {loser.total_penalty_points || 0}pt
               </p>
             </CardContent>
           </Card>
@@ -190,7 +169,7 @@ export default function TimerResultsPage() {
               <p className="text-sm text-muted-foreground">あなたの結果</p>
               <div className="text-center p-3 rounded-lg bg-muted/50">
                 <TrendingDown className="w-5 h-5 text-destructive mx-auto mb-1" />
-                <p className="text-xs text-muted-foreground">ペナルティ</p>
+                <p className="text-xs text-muted-foreground">誤差ポイント</p>
                 <p className="text-lg font-bold text-foreground">
                   {currentPlayer.total_penalty_points || 0}pt
                 </p>

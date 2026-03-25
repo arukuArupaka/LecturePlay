@@ -65,19 +65,27 @@ export default function TimerGamePage() {
       const me = playersData.find(p => p.id === playerId)
       if (me) {
         setCurrentPlayer(me)
-        // Check if already predicted for current slide
         const currentSlide = roomData?.current_slide || 1
-        const predictions = me.slide_predictions || []
-        const currentPrediction = predictions.find((p: SlidePrediction) => p.slide_number === currentSlide)
-        if (currentPrediction) {
-          setPrediction(currentPrediction.predicted_seconds)
-          setHasPredicted(true)
-          setShowSlider(false)
+        const totalSlides = roomData?.total_slides || 1
+        const canPredictNext = currentSlide < totalSlides
+        if (canPredictNext) {
+          const nextSlide = Math.min(currentSlide + 1, totalSlides)
+          const predictions = me.slide_predictions || []
+          const nextPrediction = predictions.find((p: SlidePrediction) => p.slide_number === nextSlide)
+          if (nextPrediction) {
+            setPrediction(nextPrediction.predicted_seconds)
+            setHasPredicted(true)
+            setShowSlider(false)
+          } else {
+            setPrediction(null)
+            setHasPredicted(false)
+            // Keep slider open while the user is choosing a value
+            setShowSlider(prev => prev)
+          }
         } else {
           setPrediction(null)
-          setHasPredicted(false)
-          // Keep slider open while the user is choosing a value
-          setShowSlider(prev => prev)
+          setHasPredicted(true)
+          setShowSlider(false)
         }
       }
     }
@@ -166,6 +174,7 @@ export default function TimerGamePage() {
 
   const handlePredict = async () => {
     if (!room || hasPredicted) return
+    if ((room.current_slide || 1) >= (room.total_slides || 1)) return
 
     setShowSlider(true)
   }
@@ -174,8 +183,12 @@ export default function TimerGamePage() {
     if (!room || !currentPlayer) return
 
     const currentSlide = room.current_slide || 1
+    const totalSlides = room.total_slides || 1
+    if (currentSlide >= totalSlides) return
+
+    const targetSlide = Math.min(currentSlide + 1, totalSlides)
     const newPrediction: SlidePrediction = {
-      slide_number: currentSlide,
+      slide_number: targetSlide,
       predicted_seconds: sliderValue,
       timestamp: new Date().toISOString(),
     }
@@ -262,9 +275,17 @@ export default function TimerGamePage() {
 
   const predictedCount = players.filter(p => {
     const currentSlide = room?.current_slide || 1
+    const totalSlides = room?.total_slides || 1
+    if (currentSlide >= totalSlides) return false
+    const nextSlide = Math.min(currentSlide + 1, totalSlides)
     const predictions = p.slide_predictions || []
-    return predictions.some((pred: SlidePrediction) => pred.slide_number === currentSlide)
+    return predictions.some((pred: SlidePrediction) => pred.slide_number === nextSlide)
   }).length
+
+  const currentSlideNumber = room?.current_slide || 1
+  const totalSlides = room?.total_slides || 1
+  const nextSlideNumber = Math.min(currentSlideNumber + 1, totalSlides)
+  const canPredictNext = currentSlideNumber < totalSlides
 
   return (
     <main className="min-h-screen flex flex-col p-4">
@@ -310,21 +331,21 @@ export default function TimerGamePage() {
         </Card>
 
         {/* Prediction Section */}
-        {!hasPredicted && !showSlider && (
+        {canPredictNext && !hasPredicted && !showSlider && (
           <Button
             onClick={handlePredict}
             className="w-full h-14 text-lg font-medium bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             <Target className="w-5 h-5 mr-2" />
-            このスライドの時間を予想する
+            次のスライドを予想する
           </Button>
         )}
 
-        {showSlider && (
+        {canPredictNext && showSlider && (
           <Card className="bg-card border-border">
             <CardContent className="p-4 space-y-4">
               <p className="text-sm text-muted-foreground text-center">
-                このスライドは何秒かかると思う?
+                次のスライド ({nextSlideNumber}) は何秒かかると思う?
               </p>
               <div className="text-center">
                 <span className="text-3xl font-mono font-bold text-foreground">
@@ -354,7 +375,7 @@ export default function TimerGamePage() {
           </Card>
         )}
 
-        {hasPredicted && prediction !== null && (
+        {canPredictNext && hasPredicted && prediction !== null && (
           <Card className="bg-green-500/10 border-green-500/30">
             <CardContent className="p-4 text-center">
               <p className="text-sm text-green-500 font-medium">予想済み</p>
@@ -364,6 +385,14 @@ export default function TimerGamePage() {
               <p className="text-xs text-muted-foreground mt-2">
                 {predictedCount}/{players.length} 人が予想済み
               </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {!canPredictNext && (
+          <Card className="bg-muted/30 border-border">
+            <CardContent className="p-4 text-center">
+              <p className="text-sm text-muted-foreground">最後のスライドです</p>
             </CardContent>
           </Card>
         )}
@@ -388,7 +417,7 @@ export default function TimerGamePage() {
                 差分 {formatSignedSeconds(lastResult.predicted_seconds - lastResult.actual_seconds)}
               </p>
               <p className={`text-sm font-medium mt-2 ${lastResult.penalty_points <= 10 ? 'text-green-500' : 'text-destructive'}`}>
-                +{lastResult.penalty_points} ペナルティ
+                +{lastResult.penalty_points} 誤差ポイント
               </p>
             </CardContent>
           </Card>
@@ -428,7 +457,7 @@ export default function TimerGamePage() {
         {/* Leaderboard Preview */}
         <Card className="bg-card border-border">
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground mb-3">ランキング (ペナルティ少ない順)</p>
+            <p className="text-xs text-muted-foreground mb-3">ランキング (誤差ポイント少ない順)</p>
             <div className="space-y-2">
               {players
                 .sort((a, b) => (a.total_penalty_points || 0) - (b.total_penalty_points || 0))

@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
 import { getOrCreatePlayerId, getRoomInfo } from '@/lib/game-utils'
-import type { Player, Room, GridSize } from '@/lib/types'
+import type { Player, Room, GridSize, SlidePrediction } from '@/lib/types'
 import { Users, Crown, Copy, Check, Play, ArrowRight, Grid3X3, Timer, Grid2X2Plus } from 'lucide-react'
 
 export default function WaitingRoomPage() {
@@ -23,6 +23,9 @@ export default function WaitingRoomPage() {
   const [isStarting, setIsStarting] = useState(false)
   const [hasSetup, setHasSetup] = useState(false)
   const [totalSlides, setTotalSlides] = useState('')
+  const [slidePrediction, setSlidePrediction] = useState(60)
+  const [isSavingPrediction, setIsSavingPrediction] = useState(false)
+  const [predictionError, setPredictionError] = useState('')
 
   const playerId = typeof window !== 'undefined' ? getOrCreatePlayerId() : ''
 
@@ -62,7 +65,12 @@ export default function WaitingRoomPage() {
         setCurrentPlayer(me)
         // Check setup status based on game type
         if (roomData?.game_type === 'timer') {
-          setHasSetup(!!me.penalty)
+          const predictions: SlidePrediction[] = me.slide_predictions || []
+          const firstPrediction = predictions.find((p: SlidePrediction) => p.slide_number === 1)
+          if (firstPrediction) {
+            setSlidePrediction(firstPrediction.predicted_seconds)
+          }
+          setHasSetup(!!firstPrediction)
         } else if (roomData?.game_type === 'presentation-bingo') {
           const expectedCells = 9
           setHasSetup(!!me.bingo_card && me.bingo_card.length === expectedCells)
@@ -147,8 +155,44 @@ export default function WaitingRoomPage() {
     router.push(`/room/${roomId}/setup`)
   }
 
-  const handleSetupPenalty = () => {
-    router.push(`/room/${roomId}/penalty`)
+  const handleSaveFirstPrediction = async () => {
+    if (!room || room.game_type !== 'timer' || !currentPlayer) return
+
+    if (slidePrediction < 10 || slidePrediction > 300) {
+      setPredictionError('10〜300秒で入力してね')
+      return
+    }
+
+    setIsSavingPrediction(true)
+    setPredictionError('')
+
+    try {
+      const supabase = createClient()
+      const existing = currentPlayer.slide_predictions || []
+      const updatedPredictions: SlidePrediction[] = [
+        ...existing.filter(p => p.slide_number !== 1),
+        {
+          slide_number: 1,
+          predicted_seconds: slidePrediction,
+          timestamp: new Date().toISOString(),
+        },
+      ]
+
+      const { error } = await supabase
+        .from('players')
+        .update({ slide_predictions: updatedPredictions })
+        .eq('id', playerId)
+        .eq('room_id', roomId)
+
+      if (error) throw error
+
+      setHasSetup(true)
+    } catch (err) {
+      console.error('Prediction save error:', err)
+      setPredictionError('保存に失敗しました。もう一度試してね')
+    } finally {
+      setIsSavingPrediction(false)
+    }
   }
 
   const normalizePresetCards = (cards: Room['preset_bingo_cards']) =>
@@ -161,28 +205,29 @@ export default function WaitingRoomPage() {
     if (!room) return
 
     if (room.game_type !== 'timer') {
-      // Check if all players have set up their bingo cards
-      const gridSize = room.grid_size || 3
-      const expectedCells = gridSize * gridSize
-      const allReady = room.game_type === 'presentation-bingo'
-        ? players.every(p => p.bingo_card && p.bingo_card.length === 9)
-        : players.every(p => p.bingo_card && p.bingo_card.length === expectedCells && p.penalty)
-      
-      if (!allReady) {
-        alert('まだビンゴカードを作ってない人がいるよ')
-        return
-      }
       if (room.game_type === 'presentation-bingo') {
         const presetCards = normalizePresetCards(room.preset_bingo_cards)
         if (!isValidPresetCards(presetCards)) {
           alert('ホストがビンゴ用紙を5枚以上作ってね')
           return
         }
+      } else {
+        // Check if all players have set up their bingo cards
+        const gridSize = room.grid_size || 3
+        const expectedCells = gridSize * gridSize
+        const allReady = players.every(p => p.bingo_card && p.bingo_card.length === expectedCells && p.penalty)
+        
+        if (!allReady) {
+          alert('まだビンゴカードを作ってない人がいるよ')
+          return
+        }
       }
     } else {
-      const allReady = players.every(p => p.penalty)
+      const allReady = players.every(p =>
+        (p.slide_predictions || []).some(pred => pred.slide_number === 1)
+      )
       if (!allReady) {
-        alert('罰ゲームを決めてない人がいるよ')
+        alert('まだ予想してない人がいるよ')
         return
       }
 
@@ -230,7 +275,11 @@ export default function WaitingRoomPage() {
 
   const getReadyCount = () => {
     if (!room) return 0
-    if (room.game_type === 'timer') return players.filter(p => p.penalty).length
+    if (room.game_type === 'timer') {
+      return players.filter(p =>
+        (p.slide_predictions || []).some(pred => pred.slide_number === 1)
+      ).length
+    }
     if (room.game_type === 'presentation-bingo') {
       return players.filter(p => p.bingo_card && p.bingo_card.length === 9).length
     }
@@ -306,7 +355,7 @@ export default function WaitingRoomPage() {
                 const gridSize = room?.grid_size || 3
                 const expectedCells = gridSize * gridSize
                 const isReady = room?.game_type === 'timer'
-                  ? !!player.penalty
+                  ? (player.slide_predictions || []).some(pred => pred.slide_number === 1)
                   : room?.game_type === 'presentation-bingo'
                     ? (player.bingo_card && player.bingo_card.length === 9)
                     : (player.bingo_card && player.bingo_card.length === expectedCells && player.penalty)
@@ -364,16 +413,44 @@ export default function WaitingRoomPage() {
               </p>
             </div>
           ) : room?.game_type === 'timer' && !hasSetup ? (
-            <Button
-              onClick={handleSetupPenalty}
-              className="w-full h-14 text-lg font-medium bg-primary hover:bg-primary/90 text-primary-foreground"
-            >
-              罰ゲームを決める
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
+            <Card className="bg-card border-border">
+              <CardContent className="p-4 space-y-3">
+                <p className="text-sm text-muted-foreground">1枚目の時間を予想</p>
+                <div className="text-center">
+                  <span className="text-2xl font-mono font-bold text-foreground">
+                    {slidePrediction}秒
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={10}
+                  max={300}
+                  step={5}
+                  value={slidePrediction}
+                  onChange={(e) => setSlidePrediction(parseInt(e.target.value))}
+                  className="w-full accent-primary"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>10秒</span>
+                  <span>5分</span>
+                </div>
+                {predictionError && (
+                  <p className="text-center text-xs text-destructive">
+                    {predictionError}
+                  </p>
+                )}
+                <Button
+                  onClick={handleSaveFirstPrediction}
+                  disabled={isSavingPrediction}
+                  className="w-full"
+                >
+                  {isSavingPrediction ? '保存中...' : 'この予想で決定'}
+                </Button>
+              </CardContent>
+            </Card>
           ) : room?.game_type === 'timer' && hasSetup ? (
             <div className="text-center p-4 rounded-lg bg-accent/10 border border-accent/20">
-              <p className="text-accent font-medium">スライドタイマー</p>
+              <p className="text-accent font-medium">1枚目の予想済み</p>
               <p className="text-xs text-muted-foreground mt-1">
                 ホストがスライド数を設定して開始するよ
               </p>
@@ -404,7 +481,7 @@ export default function WaitingRoomPage() {
           {isHost && (
             <Button
               onClick={handleStartGame}
-              disabled={isStarting || ((room?.game_type === 'bingo' || room?.game_type === 'presentation-bingo') && (readyCount < players.length || players.length < 1)) || (room?.game_type === 'timer' && (readyCount < players.length || !totalSlides || parseInt(totalSlides) < 1))}
+              disabled={isStarting || ((room?.game_type === 'bingo') && (readyCount < players.length || players.length < 1)) || (room?.game_type === 'timer' && (readyCount < players.length || !totalSlides || parseInt(totalSlides) < 1))}
               className="w-full h-14 text-lg font-medium bg-accent hover:bg-accent/90 text-accent-foreground"
             >
               {isStarting ? (
@@ -422,7 +499,7 @@ export default function WaitingRoomPage() {
         {/* Footer hint */}
         <p className="text-center text-xs text-muted-foreground">
           {room?.game_type === 'timer'
-            ? 'ホストがスライド数を入力したらスタート'
+            ? '全員が1枚目を予想したら開始できるよ'
             : '全員が準備完了したらゲーム開始できるよ'
           }
         </p>
