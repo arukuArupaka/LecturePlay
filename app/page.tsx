@@ -152,6 +152,10 @@ export default function HomePage() {
       // Timer game doesn't need grid size selection
       handleCreateRoom('timer')
     }
+    if (gameType === 'presentation-bingo') {
+      // Presentation bingo uses fixed 3x3 cards
+      handleCreateRoom('presentation-bingo', 3)
+    }
     // For bingo, show grid size selection
   }
 
@@ -285,6 +289,27 @@ export default function HomePage() {
                     </div>
                   </div>
                   <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-accent transition-colors" />
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleSelectGame('presentation-bingo')}
+                disabled={isCreating}
+                className="w-full p-5 rounded-xl bg-card border border-border hover:border-primary/50 hover:bg-card/80 transition-all text-left group"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center">
+                      <Grid3X3 className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground">プレゼン用ビンゴ</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        ホストの用紙から選んで遊ぶ
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                 </div>
               </button>
 

@@ -151,7 +151,7 @@ export default function ResultsPage() {
         )}
 
         {/* Penalty Section */}
-        {winner && loser && winner.penalty && winner.id !== loser.id && (
+        {room?.game_type !== 'presentation-bingo' && winner && loser && winner.penalty && winner.id !== loser.id && (
           <Card className="bg-destructive/10 border-destructive/30">
             <CardContent className="p-5">
               <div className="flex items-center gap-2 mb-3">

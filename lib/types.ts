@@ -1,4 +1,4 @@
-export type GameType = 'bingo' | 'timer'
+export type GameType = 'bingo' | 'timer' | 'presentation-bingo'
 export type GridSize = 3 | 5
 export type RoomStatus = 'waiting' | 'playing' | 'finished'
 
@@ -8,6 +8,7 @@ export interface Room {
   status: RoomStatus
   game_type: GameType
   grid_size: GridSize
+  preset_bingo_cards?: string[][] | null
   total_slides: number | null
   current_slide: number
   slide_start_time: string | null

@@ -39,11 +39,11 @@ export default function WaitingRoomPage() {
     if (roomData) {
       setRoom(roomData)
       if (roomData.status === 'playing') {
-        if (roomData.game_type === 'bingo') {
-          router.push(`/room/${roomId}/play`)
-        } else {
+        if (roomData.game_type === 'timer') {
           router.push(`/room/${roomId}/timer`)
+          return
         }
+        router.push(`/room/${roomId}/play`)
         return
       }
     }
@@ -61,12 +61,15 @@ export default function WaitingRoomPage() {
       if (me) {
         setCurrentPlayer(me)
         // Check setup status based on game type
-        if (roomData?.game_type === 'bingo') {
-          const gridSize = roomData.grid_size || 3
+        if (roomData?.game_type === 'timer') {
+          setHasSetup(!!me.penalty)
+        } else if (roomData?.game_type === 'presentation-bingo') {
+          const expectedCells = 9
+          setHasSetup(!!me.bingo_card && me.bingo_card.length === expectedCells)
+        } else {
+          const gridSize = roomData?.grid_size || 3
           const expectedCells = gridSize * gridSize
           setHasSetup(!!me.bingo_card && me.bingo_card.length === expectedCells && !!me.penalty)
-        } else {
-          setHasSetup(!!me.penalty)
         }
       }
     }
@@ -117,11 +120,11 @@ export default function WaitingRoomPage() {
           const newRoom = payload.new as Room
           setRoom(newRoom)
           if (newRoom.status === 'playing') {
-            if (newRoom.game_type === 'bingo') {
-              router.push(`/room/${roomId}/play`)
-            } else {
+            if (newRoom.game_type === 'timer') {
               router.push(`/room/${roomId}/timer`)
+              return
             }
+            router.push(`/room/${roomId}/play`)
           }
         }
       )
@@ -148,18 +151,33 @@ export default function WaitingRoomPage() {
     router.push(`/room/${roomId}/penalty`)
   }
 
+  const normalizePresetCards = (cards: Room['preset_bingo_cards']) =>
+    Array.isArray(cards) ? cards : []
+
+  const isValidPresetCards = (cards: string[][]) =>
+    cards.length >= 5 && cards.every(card => card.length === 9 && card.every(cell => cell.trim()))
+
   const handleStartGame = async () => {
     if (!room) return
 
-    if (room.game_type === 'bingo') {
+    if (room.game_type !== 'timer') {
       // Check if all players have set up their bingo cards
       const gridSize = room.grid_size || 3
       const expectedCells = gridSize * gridSize
-      const allReady = players.every(p => p.bingo_card && p.bingo_card.length === expectedCells && p.penalty)
+      const allReady = room.game_type === 'presentation-bingo'
+        ? players.every(p => p.bingo_card && p.bingo_card.length === 9)
+        : players.every(p => p.bingo_card && p.bingo_card.length === expectedCells && p.penalty)
       
       if (!allReady) {
         alert('まだビンゴカードを作ってない人がいるよ')
         return
+      }
+      if (room.game_type === 'presentation-bingo') {
+        const presetCards = normalizePresetCards(room.preset_bingo_cards)
+        if (!isValidPresetCards(presetCards)) {
+          alert('ホストがビンゴ用紙を5枚以上作ってね')
+          return
+        }
       }
     } else {
       const allReady = players.every(p => p.penalty)
@@ -213,6 +231,9 @@ export default function WaitingRoomPage() {
   const getReadyCount = () => {
     if (!room) return 0
     if (room.game_type === 'timer') return players.filter(p => p.penalty).length
+    if (room.game_type === 'presentation-bingo') {
+      return players.filter(p => p.bingo_card && p.bingo_card.length === 9).length
+    }
     const gridSize = room.grid_size || 3
     const expectedCells = gridSize * gridSize
     return players.filter(p => p.bingo_card && p.bingo_card.length === expectedCells && p.penalty).length
@@ -232,6 +253,9 @@ export default function WaitingRoomPage() {
   const getGameLabel = () => {
     if (room?.game_type === 'timer') {
       return 'スライドタイマー'
+    }
+    if (room?.game_type === 'presentation-bingo') {
+      return 'プレゼン用ビンゴ 3x3'
     }
     return room?.grid_size === 5 ? 'ビンゴ 5x5' : 'ビンゴ 3x3'
   }
@@ -283,7 +307,9 @@ export default function WaitingRoomPage() {
                 const expectedCells = gridSize * gridSize
                 const isReady = room?.game_type === 'timer'
                   ? !!player.penalty
-                  : (player.bingo_card && player.bingo_card.length === expectedCells && player.penalty)
+                  : room?.game_type === 'presentation-bingo'
+                    ? (player.bingo_card && player.bingo_card.length === 9)
+                    : (player.bingo_card && player.bingo_card.length === expectedCells && player.penalty)
                 const isMe = player.id === playerId
                 const isPlayerHost = room?.host_id === player.id
 
@@ -319,15 +345,18 @@ export default function WaitingRoomPage() {
 
         {/* Action Buttons */}
         <div className="space-y-3">
-          {room?.game_type === 'bingo' && !hasSetup ? (
+          {(room?.game_type === 'bingo' || room?.game_type === 'presentation-bingo') && !hasSetup ? (
             <Button
               onClick={handleSetupBingo}
               className="w-full h-14 text-lg font-medium bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              ビンゴカードを作る
+              {room?.game_type === 'presentation-bingo'
+                ? (isHost ? 'ビンゴ用紙を作る' : 'ビンゴ用紙を選ぶ')
+                : 'ビンゴカードを作る'
+              }
               <ArrowRight className="w-5 h-5 ml-2" />
             </Button>
-          ) : room?.game_type === 'bingo' && hasSetup ? (
+          ) : (room?.game_type === 'bingo' || room?.game_type === 'presentation-bingo') && hasSetup ? (
             <div className="text-center p-4 rounded-lg bg-green-500/10 border border-green-500/20">
               <p className="text-green-500 font-medium">準備完了</p>
               <p className="text-xs text-muted-foreground mt-1">
@@ -375,7 +404,7 @@ export default function WaitingRoomPage() {
           {isHost && (
             <Button
               onClick={handleStartGame}
-              disabled={isStarting || (room?.game_type === 'bingo' && (readyCount < players.length || players.length < 1)) || (room?.game_type === 'timer' && (readyCount < players.length || !totalSlides || parseInt(totalSlides) < 1))}
+              disabled={isStarting || ((room?.game_type === 'bingo' || room?.game_type === 'presentation-bingo') && (readyCount < players.length || players.length < 1)) || (room?.game_type === 'timer' && (readyCount < players.length || !totalSlides || parseInt(totalSlides) < 1))}
               className="w-full h-14 text-lg font-medium bg-accent hover:bg-accent/90 text-accent-foreground"
             >
               {isStarting ? (
@@ -392,9 +421,9 @@ export default function WaitingRoomPage() {
 
         {/* Footer hint */}
         <p className="text-center text-xs text-muted-foreground">
-          {room?.game_type === 'bingo' 
-            ? '全員が準備完了したらゲーム開始できるよ'
-            : 'ホストがスライド数を入力したらスタート'
+          {room?.game_type === 'timer'
+            ? 'ホストがスライド数を入力したらスタート'
+            : '全員が準備完了したらゲーム開始できるよ'
           }
         </p>
       </div>
